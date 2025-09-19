@@ -1,5 +1,5 @@
 
-### How to User
+## How to Use
 
 ### Linux or Mac
 
