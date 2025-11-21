@@ -25,6 +25,9 @@ public:
     virtual bool HasNormals () const override;
     virtual bool GetColor (Color& color) const override;
 
+    virtual int GetVertexCount () const override;
+    virtual int GetTriangleCount () const override;
+
     virtual void EnumerateVertices (const std::function<void (double, double, double)>& onVertex) const override;
     virtual void EnumerateNormals (const std::function<void (double, double, double)>& onNormal) const override;
     virtual void EnumerateTriangles (const std::function<void (int, int, int)>& onTriangle) const override;

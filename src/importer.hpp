@@ -30,6 +30,10 @@ public:
     virtual bool HasNormals () const = 0;
     virtual bool GetColor (Color& color) const = 0;
 
+    // Get counts for pre-allocation optimization
+    virtual int GetVertexCount () const = 0;
+    virtual int GetTriangleCount () const = 0;
+
     virtual void EnumerateVertices (const std::function<void (double, double, double)>& onVertex) const = 0;
     virtual void EnumerateNormals (const std::function<void (double, double, double)>& onNormal) const = 0;
     virtual void EnumerateTriangles (const std::function<void (int, int, int)>& onTriangle) const = 0;
@@ -83,6 +87,10 @@ public:
     LinearDeflectionType linearDeflectionType;
     double linearDeflection;
     double angularDeflection;
+
+    // Hierarchy depth limit: when depth >= maxHierarchyDepth, treat node as mesh (merge deep sub-parts)
+    // Set to 0 to disable limit (process all levels)
+    int maxHierarchyDepth;
 };
 
 class Importer

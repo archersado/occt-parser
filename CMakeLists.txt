@@ -1,6 +1,7 @@
 cmake_minimum_required (VERSION 3.6)
 add_definitions(-DHAVE_FREETYPE)
 include_directories(/opt/homebrew/include)
+include_directories(/opt/homebrew/opt/freetype/include/freetype2)
 set_property (GLOBAL PROPERTY USE_FOLDERS ON)
 set (CMAKE_CONFIGURATION_TYPES Debug;Release;RelWithDebInfo;MinSizeRel)
 
@@ -8,6 +9,11 @@ add_definitions (-DUNICODE -D_UNICODE)
 
 project (OcctParser)
 set (CMAKE_CXX_STANDARD 11)
+
+# Threading support for parallel mesh triangulation
+set (CMAKE_THREAD_PREFER_PTHREAD TRUE)
+set (THREADS_PREFER_PTHREAD_FLAG TRUE)
+find_package (Threads REQUIRED)
 
 # OcctParser
 
@@ -318,6 +324,7 @@ source_group ("OCCT" FILES ${OcctSourceFiles})
 add_library (OcctParser ${OcctParserSourceFiles} ${OcctSourceFiles})
 target_compile_options (OcctParser PUBLIC -DOCCT_NO_PLUGINS)
 target_include_directories (OcctParser PUBLIC	${OcctIncludeDirs})
+target_link_libraries (OcctParser PUBLIC Threads::Threads)
 set_target_properties(OcctParser PROPERTIES OUTPUT_NAME occt-parser)
 set_target_properties (OcctParser PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/${CMAKE_BUILD_TYPE}")
 

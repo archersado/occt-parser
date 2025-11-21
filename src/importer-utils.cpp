@@ -38,6 +38,22 @@ bool OcctFace::GetColor (Color&) const
     return false;
 }
 
+int OcctFace::GetVertexCount () const
+{
+    if (!HasTriangulation ()) {
+        return 0;
+    }
+    return triangulation->NbNodes ();
+}
+
+int OcctFace::GetTriangleCount () const
+{
+    if (!HasTriangulation ()) {
+        return 0;
+    }
+    return triangulation->NbTriangles ();
+}
+
 void OcctFace::EnumerateVertices (const std::function<void (double, double, double)>& onVertex) const
 {
     if (!HasTriangulation ()) {
@@ -141,6 +157,7 @@ bool TriangulateShape (TopoDS_Shape& shape, const ImportParams& params)
         }
     }
 
-    BRepMesh_IncrementalMesh mesh (shape, linDeflection, Standard_False, angDeflection);
+    // Enable OCCT parallel meshing for better performance on multi-core systems
+    BRepMesh_IncrementalMesh mesh (shape, linDeflection, Standard_True, angDeflection);
     return true;
 }

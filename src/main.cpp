@@ -60,6 +60,24 @@ private:
             json indexArr = json::array();
             json brepFaceArr = json::array();
 
+            // Pre-allocate arrays to reduce reallocation overhead
+            // First pass: count total vertices and triangles
+            int estimatedVertices = 0;
+            int estimatedTriangles = 0;
+            mesh.EnumerateFaces([&](const Face& face) {
+                estimatedVertices += face.GetVertexCount();
+                estimatedTriangles += face.GetTriangleCount();
+            });
+
+            // Reserve space for better performance
+            if (estimatedVertices > 0) {
+                positionArr.get_ref<json::array_t&>().reserve(estimatedVertices * 3);
+                normalArr.get_ref<json::array_t&>().reserve(estimatedVertices * 3);
+            }
+            if (estimatedTriangles > 0) {
+                indexArr.get_ref<json::array_t&>().reserve(estimatedTriangles * 3);
+            }
+
             mesh.EnumerateFaces([&](const Face& face) {
                 int triangleOffset = triangleCount;
                 int vertexOffset = vertexCount;
@@ -213,6 +231,10 @@ ImportParams GetImportParams(const json& paramsObj) {
 
     if (paramsObj.contains("angularDeflection")) {
         params.angularDeflection = paramsObj["angularDeflection"].get<double>();
+    }
+
+    if (paramsObj.contains("maxHierarchyDepth")) {
+        params.maxHierarchyDepth = paramsObj["maxHierarchyDepth"].get<int>();
     }
 
     return params;

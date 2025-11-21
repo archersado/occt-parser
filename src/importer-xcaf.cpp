@@ -1,6 +1,10 @@
 #include "importer-xcaf.hpp"
 #include "importer-utils.hpp"
 
+#include <thread>
+#include <vector>
+#include <mutex>
+
 #include <TopExp_Explorer.hxx>
 #include <TopoDS.hxx>
 #include <TopoDS_Face.hxx>
@@ -198,10 +202,12 @@ private:
 class XcafNode : public Node
 {
 public:
-    XcafNode (const TDF_Label& label, const Handle (XCAFDoc_ShapeTool)& shapeTool, const Handle (XCAFDoc_ColorTool)& colorTool) :
+    XcafNode (const TDF_Label& label, const Handle (XCAFDoc_ShapeTool)& shapeTool, const Handle (XCAFDoc_ColorTool)& colorTool, int depth = 0, int maxDepth = 0) :
         label (label),
         shapeTool (shapeTool),
-        colorTool (colorTool)
+        colorTool (colorTool),
+        currentDepth (depth),
+        maxHierarchyDepth (maxDepth)
     {
 
     }
@@ -222,7 +228,7 @@ public:
             TDF_Label childLabel = it.Value ();
             if (IsFreeShape (childLabel, shapeTool)) {
                 children.push_back (std::make_shared<const XcafNode> (
-                    childLabel, shapeTool, colorTool
+                    childLabel, shapeTool, colorTool, currentDepth + 1, maxHierarchyDepth
                     ));
             }
         }
@@ -231,6 +237,11 @@ public:
 
     virtual bool IsMeshNode () const override
     {
+        // Hierarchy depth limit: if we've reached max depth, treat as mesh to merge deep sub-parts
+        if (maxHierarchyDepth > 0 && currentDepth >= maxHierarchyDepth) {
+            return true;
+        }
+
         // if there are no children, it is a mesh node
         if (!label.HasChild ()) {
             return true;
@@ -271,7 +282,8 @@ public:
             return;
         }
 
-        TopoDS_Shape shape = shapeTool->GetShape (label);
+        // Use const reference to avoid unnecessary copy (shape is reference-counted but still has overhead)
+        const TopoDS_Shape& shape = shapeTool->GetShape (label);
         EnumerateShapeMeshes (shape, onMesh);
     }
 
@@ -302,6 +314,8 @@ private:
     TDF_Label label;
     const Handle (XCAFDoc_ShapeTool)& shapeTool;
     const Handle (XCAFDoc_ColorTool)& colorTool;
+    int currentDepth;
+    int maxHierarchyDepth;
 };
 
 class XcafRootNode : public Node
@@ -324,18 +338,65 @@ public:
     {
         TDF_Label mainLabel = shapeTool->Label ();
 
-        std::vector<NodePtr> children;
+        // Collect all free shape labels first
+        std::vector<TDF_Label> freeShapeLabels;
         for (TDF_ChildIterator it (mainLabel); it.More (); it.Next ()) {
             TDF_Label childLabel = it.Value ();
             if (IsFreeShape (childLabel, shapeTool)) {
-                TopoDS_Shape shape = shapeTool->GetShape (childLabel);
-                if (!TriangulateShape (shape, params)) {
-                    continue;
-                }
-                children.push_back (std::make_shared<const XcafNode> (
-                    childLabel, shapeTool, colorTool
-                    ));
+                freeShapeLabels.push_back (childLabel);
             }
+        }
+
+        // Parallel triangulation for better performance on multi-core systems
+        const size_t numShapes = freeShapeLabels.size ();
+        const unsigned int hardwareConcurrency = std::thread::hardware_concurrency ();
+        const unsigned int numThreads = (hardwareConcurrency > 0) ? hardwareConcurrency : 4;
+
+        // Only use parallel processing if we have enough shapes (avoid threading overhead for small models)
+        const bool useParallel = (numShapes >= 10 && numThreads > 1);
+
+        if (useParallel) {
+            // Parallel triangulation
+            std::vector<std::thread> workers;
+            std::mutex shapeMutex;
+            size_t nextShapeIndex = 0;
+
+            for (unsigned int i = 0; i < numThreads && i < numShapes; ++i) {
+                workers.emplace_back ([&]() {
+                    while (true) {
+                        size_t index;
+                        {
+                            std::lock_guard<std::mutex> lock (shapeMutex);
+                            if (nextShapeIndex >= numShapes) {
+                                break;
+                            }
+                            index = nextShapeIndex++;
+                        }
+
+                        TDF_Label childLabel = freeShapeLabels[index];
+                        TopoDS_Shape shape = shapeTool->GetShape (childLabel);
+                        TriangulateShape (shape, params);
+                    }
+                });
+            }
+
+            for (auto& worker : workers) {
+                worker.join ();
+            }
+        } else {
+            // Sequential triangulation for small models
+            for (const TDF_Label& childLabel : freeShapeLabels) {
+                TopoDS_Shape shape = shapeTool->GetShape (childLabel);
+                TriangulateShape (shape, params);
+            }
+        }
+
+        // Build node hierarchy (must be sequential as we're building shared_ptrs)
+        std::vector<NodePtr> children;
+        for (const TDF_Label& childLabel : freeShapeLabels) {
+            children.push_back (std::make_shared<const XcafNode> (
+                childLabel, shapeTool, colorTool, 1, params.maxHierarchyDepth
+            ));
         }
 
         return children;

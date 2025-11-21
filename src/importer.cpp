@@ -52,7 +52,8 @@ ImportParams::ImportParams () :
     linearUnit (LinearUnit::Millimeter),
     linearDeflectionType (LinearDeflectionType::BoundingBoxRatio),
     linearDeflection (0.001),
-    angularDeflection (0.5)
+    angularDeflection (0.5),
+    maxHierarchyDepth (5)  // Default: limit to 5 levels, merge deeper sub-parts for performance
 {
 
 }
